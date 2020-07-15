@@ -1,0 +1,195 @@
+---
+title: "TidyTuesday20200616"
+output: html_document
+---
+
+```{r setup, echo=F}
+library('readr'); packageVersion('readr')
+library('plyr'); packageVersion('plyr')
+library('tidyverse'); packageVersion('tidyverse')
+library("viridis"); packageVersion('viridis')
+library('ggthemes'); packageVersion('ggthemes')
+library('ggrepel'); packageVersion('ggrepel')
+library('ggridges'); packageVersion('ggridges')
+library('patchwork'); packageVersion('patchwork')
+setwd("C:/Users/ssuom/OneDrive/Documents/2020/tidytuesday/2020-06-16/")
+
+```
+
+
+
+## R Markdown: Tidy Tuesday 6.16.2020
+
+This is an Rmarkdown document for my first foray into TidyTuesday. The point is to keep utilising R, keep my skills developing, while trying my hand at some interesting datasets, and learning from others.
+This weeks datasets are of a very serious matter, and inspired by the recent events, and long-due uprising of consciousness regarding racism and it's roots in the modern world. I will work with the dataset census, to understand what the ration of slavery was in the american population in the 18th and 19th centuries. The objective of the visualisation is to demonstrate the magnitude of slave-trade in the USA, and how the country was built on exploitation.
+
+
+```{r upload data}
+
+census <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-16/census.csv')
+head(census)
+
+```
+
+## Data discovery with plots
+
+
+###Second dataset: 
+
+
+```{r}
+blackpast <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-06-16/blackpast.csv')
+head(blackpast)
+
+typeof(blackpast$year)
+blackpast$year=as.numeric(blackpast$year)
+head(blackpast$year)
+hist(blackpast$year, breaks = 50)
+```
+
+Blackpast: events in the history of black people, divided by year (era) and subject matter. The events are described in the 'event' column.
+
+
+#```{r}
+ggplot(blackpast, aes(x=year, fill=subject))+geom_bar()+theme(legend.position = 'none')
+
+ggplot(blackpast, aes(x=era, fill=subject))+geom_dotplot()
+#```
+
+
+The subject matters are a lot, maybe count each of these?
+
+
+```{r}
+
+subjectscount=plyr::count(blackpast$subject)
+subjectscount[order(subjectscount$freq, decreasing = T),]
+
+majorsubjects=subjectscount[subjectscount$freq>10,'x']
+
+majorsubjects
+
+
+```
+
+Subset the total with these subjects:
+
+
+```{r}
+subset=blackpast[blackpast$subject%in%majorsubjects,]
+ggplot(subset, aes(x=year, fill=subject))+geom_bar()
+ggplot(subset, aes(x=year, fill=subject))+geom_area(position='stack', stat='bin', bins=50)+theme_wsj()+scale_fill_viridis(discrete = T, option='inferno', direction=-1)
+```
+
+Median year of all categories
+
+```{r}
+
+counts=plyr::count(subset$subject)
+#Remove rows with NA years (only 5 rows)
+subset=subset[!is.na(subset$year),]
+
+#Add column to record the mean year
+counts['meanyear']=NA
+
+#Fill in mean year of this data
+for (i in 1:nrow(counts)){
+counts[i,'meanyear']=mean(subset[subset$subject==counts$x[i],]$year)
+}
+
+
+#number of events by era, but era should be every 10 years?
+subset=subset %>% mutate(decade = floor(year/10)*10)
+
+bydecade=as.data.frame(table(subset[,c('decade', 'subject')]))
+
+#Max number of event (but which decade?)
+detach(package:plyr)
+
+#Summarizing does not work as I lose other information
+#maxnumber=bydecade %>% group_by(subject) %>% summarize(max=max(Freq))
+#Filtering works though I have many minima for many of the subjects
+
+bydecade=bydecade %>% group_by(subject) %>% filter(Freq == max(Freq))
+bydecade$decade=as.numeric(as.character(bydecade$decade))
+
+#order leveles of factor based on the mean year
+counts=counts[order(counts$meanyear),]
+subset$subject=factor(subset$subject, levels = counts$x)
+mean(subset$year)
+
+ggplot(subset, aes(x=year, fill=subject))+geom_area(position='stack', stat='bin', bins=50)+
+  theme_wsj()+
+  scale_fill_viridis(discrete = T, option='inferno', direction=1)+
+  facet_wrap(~subject, ncol=1)+theme(legend.position = 'none')+
+  geom_text(aes(label = subject), x = 1700, y = Inf) +
+  theme(strip.text = element_blank())
+
+```
+I like it, but I need to find out a way to clean it up..
+
+
+```{r}
+
+ggplot(subset, aes(x=year, fill=subject))+
+  geom_area(position='stack', stat='bin', bins=50)+
+  theme_wsj()+
+  scale_fill_viridis(discrete = T, option='inferno', direction=1)+
+  facet_wrap(~subject, ncol=1, scales='free_y')+
+  theme(legend.position = 'none')+
+  geom_text(aes(label = subject), x = 1500, y = 0, size=5, hjust=0, vjust=0)+
+  theme(strip.text = element_blank(), panel.grid = element_blank(), panel.background = element_blank(), panel.grid.major = element_blank(), axis.title.x = element_text(),
+        axis.title.y = element_text(), plot.title = element_text(hjust=0.5, size=10))+
+  labs(x='Year',  y='Events')+
+  xlim(1500, 2020)+
+  ggtitle('500 Years of Black History in the United Stated of America')
+  
+
+
+```
+
+
+
+Other trials
+
+```{r}
+
+ggplot(subset[subset$year>1500,], aes(x=decade, fill=subject))+
+  geom_area(position='identity', stat='bin', bins=50, )+
+  theme_wsj()+
+  scale_fill_viridis(discrete = T, option='inferno', direction=1)+
+  theme(legend.position = 'none')+
+  geom_text_repel(data=bydecade, aes(x=decade, y=Freq, label=subject))+
+  theme(strip.text = element_blank(), panel.grid = element_blank(), panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.title.x = element_text(),
+        axis.title.y = element_text(), plot.title = element_text(hjust=0.5))+
+  labs(x='Year',  y='Number of events')+
+  xlim(1500, 2020)+
+  ggtitle('500 Years of Black History in the United Stated of America')
+
+
+```
+
+
+ideas:
+  number of each of these subjects at the different years? 
+  add animation?
+  add first appearance of each type?
+
+
+There is a package called ggridges which allows the making of ridges as I was trying with this patchwork craziness
+
+```{r}
+
+ggplot(subset, aes(x = year, y = subject, fill=subject)) + 
+  geom_density_ridges() +
+  theme_wsj()+
+  scale_fill_viridis(discrete = T, option='inferno', direction=1)+
+  theme(legend.position = 'none', plot.title=element_text(hjust=1, size=12))+
+  labs(x='Year',  y='Major Event Category')+
+  xlim(1500, 2020)+
+  ggtitle('500 Years of Black History in the United Stated of America')
+
+
+```
+
+
